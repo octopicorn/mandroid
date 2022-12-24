@@ -20,7 +20,7 @@ import pvporcupine
 print(pvporcupine.KEYWORDS)
 
 # Picovoice API Access Key
-access_key = "cT62spZepr1dAYbJB3QyJhANDZ93/woxETeMA5xQ8y//DW2elHQXgg=="
+access_key = secrets.get('PICOVOICE_API_KEY')
 
 # keyword_path is the absolute path to the Porcupine wake word engine keyword file (with .ppn extension)
 keyword_path = "/home/admin/workspace/mandroid/picovoice_raspberry-pi.ppn"
