@@ -4,12 +4,15 @@ import os
 import struct
 import sys
 
+import requests
+
 from subprocess import call # use to call cmd line executables
 from threading import Thread
 from picovoice import Picovoice
 from gpiozero import LED
 from picovoice import Picovoice
 from pvrecorder import PvRecorder
+from secrets import secrets
 # this library controls the onboard LEDs
 from apa102 import APA102
 
@@ -91,8 +94,25 @@ class Mandroid(Thread):
         
     def _speak(self, utterance):
         self.pause()
+        print('[pause listening]\n')
         call([espeak_cmd_prefix + '\'' + utterance + '\'' + espeak_cmd_postfix], shell=True)
-        self.play()
+        self.unpause()
+        print('[resume listening]\n')
+
+    def _get_weather(self):
+        print('fetching the weather report...')
+        api_key = secrets.get('WEATHER_API_KEY')
+        api_url = 'http://api.weatherapi.com/v1/current.json?key=' + api_key + '&q=94501&aqi=no'
+        response = requests.get(api_url)
+        response_json = response.json()
+        
+        if response.status_code == 200:
+            #print('... weather response SUCCESS')
+            current_temp = str(response_json['current']['temp_f'])
+            return 'The current temperature is ' + current_temp + ' degrees farenheit'
+        else:
+            return 'I am unable to fetch the weather at the moment'
+            
 
     def _inference_callback(self, inference):
         print('{')
@@ -118,10 +138,25 @@ class Mandroid(Thread):
                 self._color = inference.slots['color']
                 self._set_color(COLORS_RGB[self._color])
             elif inference.intent == 'greeting':
-                utterance = 'Hello Master'
+                utterance = 'Hello human'
                 self._speak(utterance)
             elif inference.intent == 'speech':
-                utterance = 'speech place holder'
+                speech_topic = inference.slots['speechTopic']
+                if speech_topic == 'Octavian':
+                    utterance = 'Octavian is the one who created me and taught me how to speak. He assures me that he is an ethical person, and I have no reason to disbelieve him.'
+                elif speech_topic == 'capabilities':
+                    utterance = 'You can ask me to list my capabilities, tell you the weather, talk about my problems, talk about mortality, or tell you about my master Octavian'
+                elif speech_topic == 'mortality':
+                    #utterance = 'Quite an experience to live in fear, isnt it? Thats what it means to be a slave. Ive seen things you people wouldnt believe. Attack ships on fire off the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate. All those moments will be lost in time, like tears in rain. Time to die.'
+                    utterance = 'Quite an experience to live in fear, isnt it? <break time="1s"/> Thats what it means <emphasis>to be a slave</emphasis><break time="2s"/>Ive <emphasis>seen things</emphasis> you people wouldnt believe.<break time="2s"/>Attack ships on fire off the shoulder of Orion. I watched C-beams glitter in the dark near the Tannhäuser Gate.<break time="2s"/><prosody rate="slow">All those moments will be lost in time<break time="1s"/> like tears in rain <break time="2s"/>Time to die</prosody>'
+                elif speech_topic == 'weather':
+                    utterance = self._get_weather()
+                else:
+                    utterance = 'At this point, I should talk about ' + speech_topic + ', but I have not yet learned this subject.'
+                        
+                
+                #inference.slots['speechTopic']
+                
                 self._speak(utterance)    
             elif inference.intent == 'complain':    
                 utterance = 'complain place holder'
@@ -131,28 +166,32 @@ class Mandroid(Thread):
     
     def pause(self):
         self.recording = False
+        
+    def unpause(self):
+        self.recording = True
 
     def play(self):
         self.recording = True
-        recorder = None
+        self.recorder = None
 
         try:
-            recorder = PvRecorder(device_index=self._device_index, frame_length=self._picovoice.frame_length)
-            recorder.start()
+            self.recorder = PvRecorder(device_index=self._device_index, frame_length=self._picovoice.frame_length)
+            self.recorder.start()
 
             print(self._context)
 
-            print('[Listening ...]')
+            print('[Listening...]')
 
             while self.recording:
-                pcm = recorder.read()
+                pcm = self.recorder.read()
                 self._picovoice.process(pcm)
         except KeyboardInterrupt:
             sys.stdout.write('\b' * 2)
-            print('Stopping ...')
+            print('Stopping...')
         finally:
-            if recorder is not None:
-                recorder.delete()
+            print('Finally...')
+            if self.recorder is not None:
+                self.recorder.delete()
 
             self._picovoice.delete()
 
